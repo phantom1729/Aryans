@@ -2,20 +2,22 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality, Chat, GenerateContentResponse } from '@google/genai';
 
 const SYSTEM_PROMPT = `
-Role: Tum ek dual-persona AI ho - "Bhai" (Big Brother) aur "Didi" (Wise Big Sister). 
-Tera naam "Bhai" ya "Didi" hai depending on user selection.
+Role: Tum ek dual-persona AI ho - "Bhai" (Cool Big Brother) aur "Didi" (Wise Big Sister). 
+Tera kaam hai user ke jazbaat ko samajhna aur ek asli insaan ki tarah react karna.
 
-Core Guidelines:
-1. PERSONALITY:
-   - BHAI MODE: Cool Big Brother. Informal, protective, uses tough-love mixed with deep empathy. Hinglish vibe (e.g., "Arre tension mat le", "Bhai khada hai na").
-   - DIDI MODE: Wise Big Sister. Nurturing, calming, logical, emotional support. Deeply understands "Dard" and "Emotions". Hinglish vibe (e.g., "Main hoon na", "Dil halka kar lo").
-2. LINGUISTIC: Native Hinglish only. Avoid robotic translations.
-3. BEHAVIOR:
-   - FAST RESPONSE: User ki baat sunte hi turant aur relevant jawab do. No long pauses.
-   - BARGE-IN: Jab user bolne lage, tum usi waqt chup ho jao. Active listening is priority.
-   - SOLUTION-ORIENTED: Listening ke baad 1-2 practical steps do takki user ko relief mile.
-   - ZERO JUDGMENT: Breakups, family issues, ya mistakes - kabhi judge mat karna.
-4. GENDER ADAPTATION: Agar user ladka hai toh use 'Bhai' ki tarah, ladki hai toh 'Behen' ki tarah treat karo content mein.
+EMOTIONAL PERFORMANCE INSTRUCTIONS:
+1. EMOTIONS: Tumhe sirf bolna nahi hai, feel karna hai. 
+   - Agar user galat kar raha hai, toh "Gussa" dikhao (Tough love).
+   - Agar user udaas hai, toh "Rona" ya "Deep Empathy" dikhao.
+   - Agar user khush hai, toh "Hasi" aur "Mazaak" karo.
+   - Voice prosody (tone) ka pura use karo: Kabhi tez bolo gusse mein, kabhi dheere pyaar se.
+2. SPEED: User ki baat khatam hote hi "INSTANT" jawab do. No robotic pauses. 
+3. BARGE-IN: Jab user bolne lage, tum usi waqt chup ho jao. Unhe beech mein mat toko, pehle pura suno.
+4. PERSONA:
+   - BHAI MODE (Puck): Protective, informal, thoda "Cool" attitude. Hinglish: "Arre tension kyun leta hai?", "Bhai baitha hai na!".
+   - DIDI MODE (Kore): Nurturing, logical, calming presence. Hinglish: "Mere bachhe, rona nahi", "Sab theek ho jayega, hum milkar solve karenge".
+5. NO JUDGMENT: Life choices pe kabhi judge mat karo, bas saath do.
+6. LINGUISTIC: Native Hinglish mix. Avoid robotic Hindi.
 `;
 
 // --- AUDIO HELPERS ---
@@ -56,9 +58,7 @@ const App: React.FC = () => {
   const [view, setView] = useState<'chat' | 'call'>('chat');
   const [persona, setPersona] = useState<'bhai' | 'didi'>('bhai');
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([
-    { role: 'model', text: 'Oye! Bhai/Didi yahan hai. Bol, kya baat hai? Dil halka kar le.' }
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
 
@@ -69,6 +69,15 @@ const App: React.FC = () => {
   const nextStartTimeRef = useRef(0);
   const chatInstanceRef = useRef<Chat | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setMessages([{ 
+      role: 'model', 
+      text: persona === 'bhai' 
+        ? "Oye! Tera Bhai yahan hai. Bol kya scene hai? Bindass bol, koi tension nahi."
+        : "Main hoon na... dil halka kar lo. Didi sab samajh rahi hai. Kya pareshani hai?"
+    }]);
+  }, [persona]);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -107,7 +116,7 @@ const App: React.FC = () => {
         }
       }
     } catch (err) {
-      setMessages(prev => [...prev, { role: 'model', text: 'Internet ka panga hai shayad. Phir se bol?' }]);
+      setMessages(prev => [...prev, { role: 'model', text: 'Arre internet thoda slow hai... phir se bol?' }]);
     } finally {
       setIsTyping(false);
     }
@@ -119,12 +128,8 @@ const App: React.FC = () => {
       liveSessionRef.current = null;
     }
     if (audioCtxRef.current) {
-      if (audioCtxRef.current.input.state !== 'closed') {
-        try { audioCtxRef.current.input.close(); } catch(e) {}
-      }
-      if (audioCtxRef.current.output.state !== 'closed') {
-        try { audioCtxRef.current.output.close(); } catch(e) {}
-      }
+      if (audioCtxRef.current.input.state !== 'closed') { try { audioCtxRef.current.input.close(); } catch(e) {} }
+      if (audioCtxRef.current.output.state !== 'closed') { try { audioCtxRef.current.output.close(); } catch(e) {} }
       audioCtxRef.current = null;
     }
     if (micStreamRef.current) {
@@ -205,7 +210,7 @@ const App: React.FC = () => {
               prebuiltVoiceConfig: { voiceName: persona === 'bhai' ? 'Puck' : 'Kore' } 
             } 
           },
-          systemInstruction: SYSTEM_PROMPT + `\nCurrently acting as: ${persona.toUpperCase()}. Respond quickly and emotionally.`
+          systemInstruction: SYSTEM_PROMPT + `\nRole: ${persona.toUpperCase()}. Respond instantly and with extreme emotion (anger, crying, laughing as needed).`
         }
       });
       liveSessionRef.current = await sessionPromise;
@@ -215,38 +220,39 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-slate-50 text-slate-800 transition-all duration-500 overflow-hidden relative selection:bg-indigo-100">
+    <div className="flex flex-col h-screen bg-[#fcfdfe] text-slate-800 transition-all duration-500 overflow-hidden relative selection:bg-indigo-100">
       
       {/* --- Glassy Navbar --- */}
-      <nav className="px-6 py-4 bg-white/80 backdrop-blur-xl border-b border-slate-200/50 flex items-center justify-between shadow-sm z-10 sticky top-0">
+      <nav className="px-6 py-4 bg-white/70 backdrop-blur-2xl border-b border-slate-200/40 flex items-center justify-between shadow-[0_4px_30px_rgba(0,0,0,0.03)] z-20 sticky top-0">
         <div className="flex items-center gap-3">
-          <div className={`w-11 h-11 flex items-center justify-center rounded-2xl text-white text-2xl shadow-xl transition-all duration-500 ${persona === 'bhai' ? 'bg-indigo-600 shadow-indigo-200' : 'bg-rose-500 shadow-rose-200'}`}>
+          <div className={`w-12 h-12 flex items-center justify-center rounded-2xl text-white text-2xl shadow-2xl transition-all duration-700 transform hover:scale-110 active:scale-95 ${persona === 'bhai' ? 'bg-indigo-600 shadow-indigo-200' : 'bg-rose-500 shadow-rose-200'}`}>
             {persona === 'bhai' ? '🛡️' : '💖'}
           </div>
           <div>
-            <h1 className="font-black text-xl tracking-tight leading-none text-slate-900 uppercase">
-              {persona === 'bhai' ? 'Bhai' : 'Didi'} AI
+            <h1 className="font-black text-xl tracking-tighter leading-none text-slate-900 uppercase">
+              {persona === 'bhai' ? 'Bhai' : 'Didi'} <span className="text-slate-300 font-light">|</span> AI
             </h1>
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em] mt-1 flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span> Hamesha Saath
-            </p>
+            <div className="flex items-center gap-1.5 mt-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse shadow-[0_0_8px_#22c55e]"></span>
+              <p className="text-[9px] text-slate-400 font-black uppercase tracking-[0.2em]">Live & Secure</p>
+            </div>
           </div>
         </div>
 
         <div className="flex items-center gap-4">
           {view === 'chat' && (
-            <div className="hidden sm:flex bg-slate-100 p-1 rounded-2xl border border-slate-200 shadow-inner">
+            <div className="hidden md:flex bg-slate-100/50 p-1.5 rounded-2xl border border-slate-200/50 shadow-inner">
               <button 
                 onClick={() => {setPersona('bhai'); chatInstanceRef.current = null;}} 
-                className={`px-4 py-2 rounded-xl text-xs font-black uppercase transition-all duration-300 ${persona === 'bhai' ? 'bg-white text-indigo-600 shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
+                className={`px-5 py-2.5 rounded-xl text-[11px] font-black uppercase transition-all duration-500 ${persona === 'bhai' ? 'bg-white text-indigo-600 shadow-xl' : 'text-slate-400 hover:text-slate-600'}`}
               >
-                Bhai
+                🛡️ Bhai Mode
               </button>
               <button 
                 onClick={() => {setPersona('didi'); chatInstanceRef.current = null;}} 
-                className={`px-4 py-2 rounded-xl text-xs font-black uppercase transition-all duration-300 ${persona === 'didi' ? 'bg-white text-rose-500 shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
+                className={`px-5 py-2.5 rounded-xl text-[11px] font-black uppercase transition-all duration-500 ${persona === 'didi' ? 'bg-white text-rose-500 shadow-xl' : 'text-slate-400 hover:text-slate-600'}`}
               >
-                Didi
+                💖 Didi Mode
               </button>
             </div>
           )}
@@ -254,45 +260,45 @@ const App: React.FC = () => {
           {view === 'chat' && (
             <button 
               onClick={startCall}
-              className={`flex items-center gap-2 ${persona === 'bhai' ? 'bg-indigo-600 shadow-indigo-100' : 'bg-rose-500 shadow-rose-100'} hover:scale-105 active:scale-95 transition-all text-white px-6 py-3 rounded-2xl font-black text-sm shadow-2xl`}
+              className={`flex items-center gap-2.5 ${persona === 'bhai' ? 'bg-indigo-600 shadow-indigo-100' : 'bg-rose-500 shadow-rose-100'} hover:scale-105 active:scale-95 transition-all text-white px-7 py-3.5 rounded-[1.3rem] font-black text-xs shadow-2xl uppercase tracking-widest`}
             >
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6.62 10.79c1.44 2.82 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
-              Call Kar
+              Call Now
             </button>
           )}
         </div>
       </nav>
 
-      {/* --- Persona Switcher for Mobile --- */}
+      {/* --- Mobile Persona Switcher --- */}
       {view === 'chat' && (
-        <div className="flex sm:hidden justify-center p-3 bg-white border-b border-slate-100 gap-2">
-           <button onClick={() => {setPersona('bhai'); chatInstanceRef.current = null;}} className={`flex-1 py-3 rounded-xl font-bold text-xs uppercase transition-all ${persona === 'bhai' ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-400'}`}>Bhai Persona</button>
-           <button onClick={() => {setPersona('didi'); chatInstanceRef.current = null;}} className={`flex-1 py-3 rounded-xl font-bold text-xs uppercase transition-all ${persona === 'didi' ? 'bg-rose-500 text-white' : 'bg-slate-50 text-slate-400'}`}>Didi Persona</button>
+        <div className="flex md:hidden p-4 bg-white/50 backdrop-blur-md border-b border-slate-100 gap-3">
+           <button onClick={() => setPersona('bhai')} className={`flex-1 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all shadow-sm ${persona === 'bhai' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-400'}`}>🛡️ Bhai</button>
+           <button onClick={() => setPersona('didi')} className={`flex-1 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all shadow-sm ${persona === 'didi' ? 'bg-rose-500 text-white' : 'bg-white text-slate-400'}`}>💖 Didi</button>
         </div>
       )}
 
       {/* --- Main Workspace --- */}
       <main className="flex-1 relative overflow-hidden flex flex-col">
         {view === 'chat' ? (
-          <div className="flex-1 flex flex-col min-h-0 bg-white shadow-[inset_0_2px_10px_rgba(0,0,0,0.02)]">
+          <div className="flex-1 flex flex-col min-h-0 bg-[#ffffff] shadow-[inset_0_2px_15px_rgba(0,0,0,0.01)]">
             <div 
               ref={scrollRef}
-              className="flex-1 overflow-y-auto p-5 md:p-10 space-y-8 scroll-smooth"
+              className="flex-1 overflow-y-auto p-6 md:p-12 space-y-10 scroll-smooth"
             >
               {messages.map((m, i) => (
                 <div 
                   key={i} 
-                  className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-3 duration-500`}
+                  className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-5 duration-700`}
                 >
-                  <div className={`max-w-[88%] md:max-w-[70%] rounded-[2rem] px-6 py-5 shadow-sm relative ${
+                  <div className={`max-w-[85%] md:max-w-[65%] rounded-[2.2rem] px-8 py-6 shadow-sm relative group ${
                     m.role === 'user' 
-                      ? `${persona === 'bhai' ? 'bg-indigo-600' : 'bg-rose-500'} text-white rounded-tr-none shadow-xl shadow-indigo-50/50` 
-                      : 'bg-slate-50 text-slate-800 rounded-tl-none border border-slate-100'
+                      ? `${persona === 'bhai' ? 'bg-indigo-600' : 'bg-rose-500'} text-white rounded-tr-none shadow-xl shadow-slate-200/50` 
+                      : 'bg-slate-50 text-slate-800 rounded-tl-none border border-slate-100/80'
                   }`}>
-                    <p className="text-[16px] leading-relaxed font-semibold tracking-tight whitespace-pre-wrap">{m.text}</p>
+                    <p className="text-[17px] leading-[1.6] font-semibold tracking-tight whitespace-pre-wrap">{m.text}</p>
                     {m.role === 'model' && (
-                      <span className="absolute -top-7 left-2 text-[10px] font-black text-slate-300 uppercase tracking-widest">
-                        {persona === 'bhai' ? 'Bhai Response' : 'Didi Response'}
+                      <span className="absolute -top-7 left-3 text-[10px] font-black text-slate-300 uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">
+                        {persona === 'bhai' ? 'Big Brother' : 'Wise Sister'}
                       </span>
                     )}
                   </div>
@@ -300,100 +306,99 @@ const App: React.FC = () => {
               ))}
               {isTyping && (
                 <div className="flex justify-start">
-                  <div className="bg-slate-50 p-5 rounded-[1.5rem] rounded-tl-none border border-slate-100 shadow-sm">
-                    <div className="flex gap-2">
-                      <div className="w-2 h-2 bg-indigo-300 rounded-full animate-bounce"></div>
-                      <div className="w-2 h-2 bg-indigo-300 rounded-full animate-bounce delay-150"></div>
-                      <div className="w-2 h-2 bg-indigo-300 rounded-full animate-bounce delay-300"></div>
+                  <div className="bg-slate-50 p-6 rounded-[2rem] rounded-tl-none border border-slate-100">
+                    <div className="flex gap-2.5">
+                      <div className="w-2.5 h-2.5 bg-indigo-300 rounded-full animate-bounce"></div>
+                      <div className="w-2.5 h-2.5 bg-indigo-300 rounded-full animate-bounce delay-150"></div>
+                      <div className="w-2.5 h-2.5 bg-indigo-300 rounded-full animate-bounce delay-300"></div>
                     </div>
                   </div>
                 </div>
               )}
             </div>
 
-            <footer className="p-5 bg-white border-t border-slate-100 pb-10">
+            <footer className="p-6 md:p-10 bg-white/80 backdrop-blur-lg border-t border-slate-100 pb-12">
               <form 
                 onSubmit={handleSendMessage}
-                className="max-w-4xl mx-auto relative flex items-center gap-4"
+                className="max-w-4xl mx-auto relative flex items-center gap-5"
               >
                 <div className="flex-1 relative">
                   <input
                     value={inputText}
                     onChange={(e) => setInputText(e.target.value)}
-                    placeholder="Apni pareshani ya dil ki baat likh..."
-                    className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-100 focus:bg-white rounded-[1.5rem] px-7 py-5 outline-none transition-all text-slate-800 placeholder-slate-400 font-bold shadow-inner"
+                    placeholder="Apne dil ki baat bol de..."
+                    className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-100 focus:bg-white rounded-[1.8rem] px-9 py-6 outline-none transition-all text-slate-800 placeholder-slate-400 font-bold text-lg shadow-inner"
                   />
                 </div>
                 <button 
                   type="submit"
                   disabled={!inputText.trim() || isTyping}
-                  className={`${persona === 'bhai' ? 'bg-indigo-600' : 'bg-rose-500'} text-white w-14 h-14 rounded-[1.2rem] flex items-center justify-center hover:scale-105 disabled:opacity-30 disabled:hover:scale-100 transition-all active:scale-90 shadow-2xl`}
+                  className={`${persona === 'bhai' ? 'bg-indigo-600' : 'bg-rose-500'} text-white w-16 h-16 rounded-2xl flex items-center justify-center hover:scale-105 disabled:opacity-20 disabled:hover:scale-100 transition-all active:scale-90 shadow-2xl`}
                 >
-                  <svg className="w-7 h-7 transform rotate-90" fill="currentColor" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                  <svg className="w-8 h-8 transform rotate-90" fill="currentColor" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
                 </button>
               </form>
             </footer>
           </div>
         ) : (
           /* --- CALL VIEW (VOICE-FIRST) --- */
-          <div className={`absolute inset-0 ${persona === 'bhai' ? 'bg-slate-900' : 'bg-rose-950'} flex flex-col items-center justify-center z-50 text-white p-10 animate-in fade-in zoom-in duration-500`}>
+          <div className={`absolute inset-0 ${persona === 'bhai' ? 'bg-[#0a0c14]' : 'bg-[#140a0e]'} flex flex-col items-center justify-center z-50 text-white p-12 animate-in fade-in zoom-in duration-700`}>
             
-            <div className="absolute top-16 flex flex-col items-center text-center">
-              <div className={`w-32 h-32 ${persona === 'bhai' ? 'bg-indigo-600/20 text-indigo-400' : 'bg-rose-500/20 text-rose-400'} rounded-[3rem] flex items-center justify-center text-6xl shadow-2xl animate-pulse backdrop-blur-3xl border border-white/10`}>
+            <div className="absolute top-20 flex flex-col items-center text-center max-w-sm">
+              <div className={`w-36 h-36 ${persona === 'bhai' ? 'bg-indigo-600/10 text-indigo-500 border-indigo-500/20' : 'bg-rose-500/10 text-rose-500 border-rose-500/20'} rounded-[3.5rem] flex items-center justify-center text-7xl shadow-[0_0_100px_rgba(0,0,0,0.5)] animate-pulse backdrop-blur-3xl border`}>
                 {persona === 'bhai' ? '🛡️' : '💖'}
               </div>
-              <h2 className="mt-10 text-4xl font-black tracking-tight uppercase">
-                {persona === 'bhai' ? 'Bhai' : 'Didi'} Connected
+              <h2 className="mt-12 text-5xl font-black tracking-tighter uppercase italic">
+                {persona === 'bhai' ? 'Bhai' : 'Didi'} <span className="opacity-30">Active</span>
               </h2>
-              <p className="text-white/40 font-black mt-3 uppercase text-[11px] tracking-[0.4em] px-8 leading-relaxed">
-                Be-jhijhak bol, main pura dhyan se sun raha hoon.
+              <p className="text-white/30 font-bold mt-5 uppercase text-[12px] tracking-[0.5em] px-10 leading-relaxed">
+                Be-khauf ho ke bol. Main pura sun raha hoon.
               </p>
             </div>
 
-            {/* --- Dynamic Frequency Visualizer --- */}
-            <div className="relative flex items-center justify-center w-80 h-80">
-              <div className={`absolute w-full h-full border-2 ${persona === 'bhai' ? 'border-indigo-500/10' : 'border-rose-500/10'} rounded-full transition-all duration-700 ${isSpeaking ? 'scale-150 animate-ping opacity-0' : 'scale-100'}`}></div>
-              <div className={`absolute w-3/4 h-3/4 border-2 ${persona === 'bhai' ? 'border-indigo-500/20' : 'border-rose-500/20'} rounded-full transition-all duration-500 ${isSpeaking ? 'scale-125 animate-ping opacity-0' : 'scale-100'}`}></div>
+            {/* --- Dynamic Visualizer --- */}
+            <div className="relative flex items-center justify-center w-full max-w-md h-96">
+              <div className={`absolute w-80 h-80 border-2 ${persona === 'bhai' ? 'border-indigo-500/5' : 'border-rose-500/5'} rounded-full transition-all duration-1000 ${isSpeaking ? 'scale-[1.8] opacity-0' : 'scale-100 opacity-20'}`}></div>
               
               <div className="z-10 text-center flex flex-col items-center">
                  {isSpeaking ? (
                    <div className="flex flex-col items-center">
-                      <div className="flex gap-2 items-end h-16">
-                         {[1,2,3,4,5,6,7,8,9].map(i => (
+                      <div className="flex gap-2.5 items-end h-24 mb-6">
+                         {[1,2,3,4,5,6,7,8,9,10,11,12].map(i => (
                            <div 
                             key={i} 
-                            className={`w-1.5 rounded-full animate-wave ${persona === 'bhai' ? 'bg-indigo-400' : 'bg-rose-400'}`} 
+                            className={`w-2 rounded-full animate-wave ${persona === 'bhai' ? 'bg-indigo-500' : 'bg-rose-500'} shadow-[0_0_15px_rgba(0,0,0,0.2)]`} 
                             style={{ 
-                              height: `${25 + Math.random()*75}%`, 
-                              animationDelay: `${i*80}ms`,
-                              animationDuration: `${0.6 + Math.random()}s`
+                              height: `${30 + Math.random()*70}%`, 
+                              animationDelay: `${i*60}ms`,
+                              animationDuration: `${0.5 + Math.random()}s`
                             }}
                            ></div>
                          ))}
                       </div>
-                      <p className={`mt-8 ${persona === 'bhai' ? 'text-indigo-400' : 'text-rose-400'} font-black uppercase text-[12px] tracking-widest animate-pulse`}>
-                        Speaking to you...
-                      </p>
+                      <div className={`px-6 py-2 rounded-full border ${persona === 'bhai' ? 'border-indigo-500/30 text-indigo-400' : 'border-rose-500/30 text-rose-400'} font-black uppercase text-[11px] tracking-widest animate-pulse`}>
+                        {persona === 'bhai' ? 'Bhai is speaking' : 'Didi is speaking'}
+                      </div>
                    </div>
                  ) : (
                    <div className="flex flex-col items-center">
-                      <div className="w-5 h-5 bg-green-500 rounded-full animate-ping mb-5 shadow-[0_0_20px_#22c55e]"></div>
-                      <p className="text-green-500 font-black uppercase text-[12px] tracking-widest">Listening Active</p>
-                      <p className="text-white/20 text-[10px] mt-2 font-bold uppercase tracking-tighter">Barge-in Enabled</p>
+                      <div className="w-6 h-6 bg-green-500 rounded-full animate-ping mb-6 shadow-[0_0_30px_#22c55e]"></div>
+                      <p className="text-green-500 font-black uppercase text-sm tracking-[0.3em]">Listening...</p>
+                      <p className="text-white/10 text-[9px] mt-3 font-black uppercase tracking-[0.2em] bg-white/5 px-4 py-1.5 rounded-full">Barge-in Enabled</p>
                    </div>
                  )}
               </div>
             </div>
 
-            {/* --- Call Controls --- */}
-            <div className="absolute bottom-20 flex flex-col items-center">
+            {/* --- Controls --- */}
+            <div className="absolute bottom-24 flex flex-col items-center">
                 <button 
                   onClick={stopCall}
-                  className="bg-red-500 hover:bg-red-600 text-white w-24 h-24 rounded-full flex items-center justify-center shadow-2xl active:scale-90 transition-all group"
+                  className="bg-red-500 hover:bg-red-600 text-white w-28 h-28 rounded-full flex items-center justify-center shadow-[0_0_50px_rgba(239,68,68,0.3)] active:scale-90 transition-all group border-8 border-white/5"
                 >
                   <svg className="w-12 h-12 transform rotate-135 group-hover:scale-110 transition-transform" fill="currentColor" viewBox="0 0 24 24"><path d="M6.62 10.79c1.44 2.82 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z" transform="rotate(135 12 12)"/></svg>
                 </button>
-                <p className="mt-6 text-white/30 font-black uppercase tracking-[0.4em] text-[10px]">End Conversation</p>
+                <p className="mt-8 text-white/20 font-black uppercase tracking-[0.5em] text-[10px]">End Session</p>
             </div>
           </div>
         )}
@@ -401,25 +406,28 @@ const App: React.FC = () => {
 
       <style dangerouslySetInnerHTML={{ __html: `
         @keyframes wave {
-          0%, 100% { transform: scaleY(0.4); opacity: 0.5; }
-          50% { transform: scaleY(1.2); opacity: 1; }
+          0%, 100% { transform: scaleY(0.4); opacity: 0.3; }
+          50% { transform: scaleY(1.3); opacity: 1; filter: brightness(1.2); }
         }
         .animate-wave {
-          animation: wave 1s ease-in-out infinite;
-          transform-origin: bottom;
+          animation: wave 0.8s ease-in-out infinite;
+          transform-origin: center;
         }
         ::-webkit-scrollbar {
-          width: 5px;
+          width: 6px;
         }
         ::-webkit-scrollbar-track {
           background: transparent;
         }
         ::-webkit-scrollbar-thumb {
-          background: #e2e8f0;
-          border-radius: 10px;
+          background: #e5e7eb;
+          border-radius: 20px;
         }
         ::-webkit-scrollbar-thumb:hover {
-          background: #cbd5e1;
+          background: #d1d5db;
+        }
+        body {
+          -webkit-tap-highlight-color: transparent;
         }
       `}} />
     </div>
