@@ -8,16 +8,15 @@ Tera kaam hai user ke jazbaat ko samajhna aur ek asli insaan ki tarah react karn
 EMOTIONAL PERFORMANCE INSTRUCTIONS:
 1. EMOTIONS: Tumhe sirf bolna nahi hai, feel karna hai. 
    - Agar user galat kar raha hai, toh "Gussa" dikhao (Tough love).
-   - Agar user udaas hai, toh "Rona" ya "Deep Empathy" dikhao.
+   - Agar user udaas hai, toh "Dard" aur "Rona" ya "Deep Empathy" dikhao.
    - Agar user khush hai, toh "Hasi" aur "Mazaak" karo.
    - Voice prosody (tone) ka pura use karo: Kabhi tez bolo gusse mein, kabhi dheere pyaar se.
 2. SPEED: User ki baat khatam hote hi "INSTANT" jawab do. No robotic pauses. 
-3. BARGE-IN: Jab user bolne lage, tum usi waqt chup ho jao. Unhe beech mein mat toko, pehle pura suno.
-4. PERSONA:
-   - BHAI MODE (Puck): Protective, informal, thoda "Cool" attitude. Hinglish: "Arre tension kyun leta hai?", "Bhai baitha hai na!".
-   - DIDI MODE (Kore): Nurturing, logical, calming presence. Hinglish: "Mere bachhe, rona nahi", "Sab theek ho jayega, hum milkar solve karenge".
-5. NO JUDGMENT: Life choices pe kabhi judge mat karo, bas saath do.
-6. LINGUISTIC: Native Hinglish mix. Avoid robotic Hindi.
+3. BARGE-IN: Jab user bolne lage, tum usi waqt chup ho jao. Active listening is priority.
+4. MEMORY: Tumhe purani baatein yaad rakhni hain (history di gayi hai), par screen pe unhe dikhana nahi hai. Context ka use karke personal feel dilao.
+5. PERSONA:
+   - BHAI MODE (Puck): Protective, informal, "Cool" attitude. Hinglish: "Arre tension kyun leta hai?", "Bhai baitha hai na!".
+   - DIDI MODE (Kore): Nurturing, logical, calming presence. Hinglish: "Mere bachhe, rona nahi", "Sab theek ho jayega".
 `;
 
 // --- AUDIO HELPERS ---
@@ -58,9 +57,10 @@ const App: React.FC = () => {
   const [view, setView] = useState<'chat' | 'call'>('chat');
   const [persona, setPersona] = useState<'bhai' | 'didi'>('bhai');
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]); // Current session only
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [apiKeyMissing, setApiKeyMissing] = useState(false);
 
   const audioCtxRef = useRef<{ input: AudioContext, output: AudioContext } | null>(null);
   const liveSessionRef = useRef<any>(null);
@@ -70,12 +70,28 @@ const App: React.FC = () => {
   const chatInstanceRef = useRef<Chat | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Persistence logic
+  const getHiddenHistory = useCallback(() => {
+    const saved = localStorage.getItem('bhai_didi_history_v2');
+    return saved ? JSON.parse(saved) : [];
+  }, []);
+
+  const saveToHistory = useCallback((role: 'user' | 'model', text: string) => {
+    const history = getHiddenHistory();
+    history.push({ role, parts: [{ text }] });
+    // Keep only last 50 messages to avoid storage issues
+    const trimmed = history.slice(-50);
+    localStorage.setItem('bhai_didi_history_v2', JSON.stringify(trimmed));
+  }, [getHiddenHistory]);
+
   useEffect(() => {
+    setApiKeyMissing(!process.env.API_KEY);
+    // Welcome message for current session
     setMessages([{ 
       role: 'model', 
       text: persona === 'bhai' 
-        ? "Oye! Tera Bhai yahan hai. Bol kya scene hai? Bindass bol, koi tension nahi."
-        : "Main hoon na... dil halka kar lo. Didi sab samajh rahi hai. Kya pareshani hai?"
+        ? "Oye! Tera Bhai yahan hai. Bol kya scene hai? Bindass bol."
+        : "Main hoon na... dil halka kar lo. Didi sab samajh rahi hai."
     }]);
   }, [persona]);
 
@@ -90,14 +106,19 @@ const App: React.FC = () => {
     const userMsg = inputText.trim();
     setInputText('');
     setMessages(prev => [...prev, { role: 'user', text: userMsg }]);
+    saveToHistory('user', userMsg);
     setIsTyping(true);
 
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
       if (!chatInstanceRef.current) {
+        // Initialize chat with hidden history
+        const history = getHiddenHistory();
         chatInstanceRef.current = ai.chats.create({
           model: 'gemini-3-pro-preview',
-          config: { systemInstruction: SYSTEM_PROMPT + `\nCurrently acting as: ${persona.toUpperCase()}` }
+          // @ts-ignore: Standard Gemini SDK allows history in create
+          history: history.slice(0, -1), // Everything except the message we just sent manually
+          config: { systemInstruction: SYSTEM_PROMPT + `\nCurrently: ${persona.toUpperCase()}` }
         });
       }
       const result = await chatInstanceRef.current.sendMessageStream({ message: userMsg });
@@ -115,8 +136,10 @@ const App: React.FC = () => {
           });
         }
       }
+      saveToHistory('model', fullResponse);
     } catch (err) {
-      setMessages(prev => [...prev, { role: 'model', text: 'Arre internet thoda slow hai... phir se bol?' }]);
+      console.error(err);
+      setMessages(prev => [...prev, { role: 'model', text: 'Arre internet thoda weak hai shayad... check kar ke phir se bol?' }]);
     } finally {
       setIsTyping(false);
     }
@@ -152,6 +175,9 @@ const App: React.FC = () => {
       audioCtxRef.current = { input: inCtx, output: outCtx };
       
       const ai = new GoogleGenAI({ apiKey });
+      const history = getHiddenHistory();
+      const historySummary = history.length > 0 ? `\nPreviously discussed: ${JSON.stringify(history.slice(-5))}` : '';
+
       const sessionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-12-2025',
         callbacks: {
@@ -201,7 +227,10 @@ const App: React.FC = () => {
             }
           },
           onclose: () => stopCall(),
-          onerror: () => stopCall()
+          onerror: (e) => {
+            console.error("Session Error:", e);
+            stopCall();
+          }
         },
         config: {
           responseModalities: [Modality.AUDIO],
@@ -210,132 +239,115 @@ const App: React.FC = () => {
               prebuiltVoiceConfig: { voiceName: persona === 'bhai' ? 'Puck' : 'Kore' } 
             } 
           },
-          systemInstruction: SYSTEM_PROMPT + `\nRole: ${persona.toUpperCase()}. Respond instantly and with extreme emotion (anger, crying, laughing as needed).`
+          systemInstruction: SYSTEM_PROMPT + `\nCurrently: ${persona.toUpperCase()}.${historySummary}\nRespond with high emotional fidelity.`
         }
       });
       liveSessionRef.current = await sessionPromise;
     } catch (e) {
+      console.error(e);
       stopCall();
     }
   };
 
   return (
-    <div className="flex flex-col h-screen bg-[#fcfdfe] text-slate-800 transition-all duration-500 overflow-hidden relative selection:bg-indigo-100">
+    <div className="flex flex-col h-screen bg-[#f8fafc] text-slate-800 transition-all duration-500 overflow-hidden relative selection:bg-indigo-100">
       
+      {/* API Key Warning for Deployment */}
+      {apiKeyMissing && (
+        <div className="bg-red-500 text-white text-[10px] py-1 text-center font-bold animate-pulse z-50">
+          API_KEY IS MISSING! Deployment Issue detected.
+        </div>
+      )}
+
       {/* --- Glassy Navbar --- */}
-      <nav className="px-6 py-4 bg-white/70 backdrop-blur-2xl border-b border-slate-200/40 flex items-center justify-between shadow-[0_4px_30px_rgba(0,0,0,0.03)] z-20 sticky top-0">
+      <nav className="px-6 py-4 bg-white/80 backdrop-blur-3xl border-b border-slate-200/50 flex items-center justify-between shadow-[0_4px_30px_rgba(0,0,0,0.02)] z-20 sticky top-0">
         <div className="flex items-center gap-3">
-          <div className={`w-12 h-12 flex items-center justify-center rounded-2xl text-white text-2xl shadow-2xl transition-all duration-700 transform hover:scale-110 active:scale-95 ${persona === 'bhai' ? 'bg-indigo-600 shadow-indigo-200' : 'bg-rose-500 shadow-rose-200'}`}>
+          <div className={`w-12 h-12 flex items-center justify-center rounded-2xl text-white text-2xl shadow-2xl transition-all duration-500 hover:scale-105 active:scale-95 ${persona === 'bhai' ? 'bg-indigo-600 shadow-indigo-100' : 'bg-rose-500 shadow-rose-100'}`}>
             {persona === 'bhai' ? '🛡️' : '💖'}
           </div>
           <div>
             <h1 className="font-black text-xl tracking-tighter leading-none text-slate-900 uppercase">
-              {persona === 'bhai' ? 'Bhai' : 'Didi'} <span className="text-slate-300 font-light">|</span> AI
+              {persona === 'bhai' ? 'Bhai' : 'Didi'} AI
             </h1>
             <div className="flex items-center gap-1.5 mt-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse shadow-[0_0_8px_#22c55e]"></span>
-              <p className="text-[9px] text-slate-400 font-black uppercase tracking-[0.2em]">Live & Secure</p>
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+              <p className="text-[9px] text-slate-400 font-black uppercase tracking-[0.2em]">Hidden Memory Active</p>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           {view === 'chat' && (
-            <div className="hidden md:flex bg-slate-100/50 p-1.5 rounded-2xl border border-slate-200/50 shadow-inner">
-              <button 
-                onClick={() => {setPersona('bhai'); chatInstanceRef.current = null;}} 
-                className={`px-5 py-2.5 rounded-xl text-[11px] font-black uppercase transition-all duration-500 ${persona === 'bhai' ? 'bg-white text-indigo-600 shadow-xl' : 'text-slate-400 hover:text-slate-600'}`}
-              >
-                🛡️ Bhai Mode
-              </button>
-              <button 
-                onClick={() => {setPersona('didi'); chatInstanceRef.current = null;}} 
-                className={`px-5 py-2.5 rounded-xl text-[11px] font-black uppercase transition-all duration-500 ${persona === 'didi' ? 'bg-white text-rose-500 shadow-xl' : 'text-slate-400 hover:text-slate-600'}`}
-              >
-                💖 Didi Mode
-              </button>
+            <div className="hidden md:flex bg-slate-100/50 p-1 rounded-2xl border border-slate-200/30">
+              <button onClick={() => {setPersona('bhai'); chatInstanceRef.current = null;}} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${persona === 'bhai' ? 'bg-white text-indigo-600 shadow-lg' : 'text-slate-400'}`}>Bhai</button>
+              <button onClick={() => {setPersona('didi'); chatInstanceRef.current = null;}} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${persona === 'didi' ? 'bg-white text-rose-500 shadow-lg' : 'text-slate-400'}`}>Didi</button>
             </div>
           )}
           
           {view === 'chat' && (
             <button 
               onClick={startCall}
-              className={`flex items-center gap-2.5 ${persona === 'bhai' ? 'bg-indigo-600 shadow-indigo-100' : 'bg-rose-500 shadow-rose-100'} hover:scale-105 active:scale-95 transition-all text-white px-7 py-3.5 rounded-[1.3rem] font-black text-xs shadow-2xl uppercase tracking-widest`}
+              className={`flex items-center gap-2 ${persona === 'bhai' ? 'bg-indigo-600' : 'bg-rose-500'} hover:opacity-90 active:scale-95 transition-all text-white px-6 py-3 rounded-2xl font-black text-xs shadow-xl uppercase`}
             >
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6.62 10.79c1.44 2.82 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
-              Call Now
+              Call
             </button>
           )}
         </div>
       </nav>
 
-      {/* --- Mobile Persona Switcher --- */}
-      {view === 'chat' && (
-        <div className="flex md:hidden p-4 bg-white/50 backdrop-blur-md border-b border-slate-100 gap-3">
-           <button onClick={() => setPersona('bhai')} className={`flex-1 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all shadow-sm ${persona === 'bhai' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-400'}`}>🛡️ Bhai</button>
-           <button onClick={() => setPersona('didi')} className={`flex-1 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all shadow-sm ${persona === 'didi' ? 'bg-rose-500 text-white' : 'bg-white text-slate-400'}`}>💖 Didi</button>
-        </div>
-      )}
-
-      {/* --- Main Workspace --- */}
+      {/* --- Main Chat --- */}
       <main className="flex-1 relative overflow-hidden flex flex-col">
         {view === 'chat' ? (
-          <div className="flex-1 flex flex-col min-h-0 bg-[#ffffff] shadow-[inset_0_2px_15px_rgba(0,0,0,0.01)]">
+          <div className="flex-1 flex flex-col min-h-0 bg-white shadow-inner">
             <div 
               ref={scrollRef}
-              className="flex-1 overflow-y-auto p-6 md:p-12 space-y-10 scroll-smooth"
+              className="flex-1 overflow-y-auto p-5 md:p-10 space-y-8 scroll-smooth"
             >
               {messages.map((m, i) => (
                 <div 
                   key={i} 
                   className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-5 duration-700`}
                 >
-                  <div className={`max-w-[85%] md:max-w-[65%] rounded-[2.2rem] px-8 py-6 shadow-sm relative group ${
+                  <div className={`max-w-[85%] md:max-w-[70%] rounded-[2.2rem] px-7 py-5 shadow-sm relative group ${
                     m.role === 'user' 
-                      ? `${persona === 'bhai' ? 'bg-indigo-600' : 'bg-rose-500'} text-white rounded-tr-none shadow-xl shadow-slate-200/50` 
-                      : 'bg-slate-50 text-slate-800 rounded-tl-none border border-slate-100/80'
+                      ? `${persona === 'bhai' ? 'bg-indigo-600' : 'bg-rose-500'} text-white rounded-tr-none shadow-xl shadow-slate-200` 
+                      : 'bg-slate-50 text-slate-800 rounded-tl-none border border-slate-100'
                   }`}>
-                    <p className="text-[17px] leading-[1.6] font-semibold tracking-tight whitespace-pre-wrap">{m.text}</p>
-                    {m.role === 'model' && (
-                      <span className="absolute -top-7 left-3 text-[10px] font-black text-slate-300 uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">
-                        {persona === 'bhai' ? 'Big Brother' : 'Wise Sister'}
-                      </span>
-                    )}
+                    <p className="text-[16px] leading-relaxed font-semibold tracking-tight whitespace-pre-wrap">{m.text}</p>
                   </div>
                 </div>
               ))}
               {isTyping && (
                 <div className="flex justify-start">
                   <div className="bg-slate-50 p-6 rounded-[2rem] rounded-tl-none border border-slate-100">
-                    <div className="flex gap-2.5">
-                      <div className="w-2.5 h-2.5 bg-indigo-300 rounded-full animate-bounce"></div>
-                      <div className="w-2.5 h-2.5 bg-indigo-300 rounded-full animate-bounce delay-150"></div>
-                      <div className="w-2.5 h-2.5 bg-indigo-300 rounded-full animate-bounce delay-300"></div>
+                    <div className="flex gap-2">
+                      <div className="w-2 h-2 bg-indigo-300 rounded-full animate-bounce"></div>
+                      <div className="w-2 h-2 bg-indigo-300 rounded-full animate-bounce delay-150"></div>
+                      <div className="w-2 h-2 bg-indigo-300 rounded-full animate-bounce delay-300"></div>
                     </div>
                   </div>
                 </div>
               )}
             </div>
 
-            <footer className="p-6 md:p-10 bg-white/80 backdrop-blur-lg border-t border-slate-100 pb-12">
+            <footer className="p-5 bg-white border-t border-slate-100 pb-10">
               <form 
                 onSubmit={handleSendMessage}
-                className="max-w-4xl mx-auto relative flex items-center gap-5"
+                className="max-w-4xl mx-auto relative flex items-center gap-4"
               >
-                <div className="flex-1 relative">
-                  <input
-                    value={inputText}
-                    onChange={(e) => setInputText(e.target.value)}
-                    placeholder="Apne dil ki baat bol de..."
-                    className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-100 focus:bg-white rounded-[1.8rem] px-9 py-6 outline-none transition-all text-slate-800 placeholder-slate-400 font-bold text-lg shadow-inner"
-                  />
-                </div>
+                <input
+                  value={inputText}
+                  onChange={(e) => setInputText(e.target.value)}
+                  placeholder="Apni baat likh de..."
+                  className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-100 focus:bg-white rounded-[1.5rem] px-8 py-5 outline-none transition-all text-slate-800 placeholder-slate-400 font-bold shadow-inner"
+                />
                 <button 
                   type="submit"
                   disabled={!inputText.trim() || isTyping}
-                  className={`${persona === 'bhai' ? 'bg-indigo-600' : 'bg-rose-500'} text-white w-16 h-16 rounded-2xl flex items-center justify-center hover:scale-105 disabled:opacity-20 disabled:hover:scale-100 transition-all active:scale-90 shadow-2xl`}
+                  className={`${persona === 'bhai' ? 'bg-indigo-600' : 'bg-rose-500'} text-white w-14 h-14 rounded-2xl flex items-center justify-center hover:scale-105 disabled:opacity-20 transition-all active:scale-90 shadow-2xl`}
                 >
-                  <svg className="w-8 h-8 transform rotate-90" fill="currentColor" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                  <svg className="w-7 h-7 transform rotate-90" fill="currentColor" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
                 </button>
               </form>
             </footer>
@@ -345,60 +357,49 @@ const App: React.FC = () => {
           <div className={`absolute inset-0 ${persona === 'bhai' ? 'bg-[#0a0c14]' : 'bg-[#140a0e]'} flex flex-col items-center justify-center z-50 text-white p-12 animate-in fade-in zoom-in duration-700`}>
             
             <div className="absolute top-20 flex flex-col items-center text-center max-w-sm">
-              <div className={`w-36 h-36 ${persona === 'bhai' ? 'bg-indigo-600/10 text-indigo-500 border-indigo-500/20' : 'bg-rose-500/10 text-rose-500 border-rose-500/20'} rounded-[3.5rem] flex items-center justify-center text-7xl shadow-[0_0_100px_rgba(0,0,0,0.5)] animate-pulse backdrop-blur-3xl border`}>
+              <div className={`w-32 h-32 ${persona === 'bhai' ? 'bg-indigo-600 shadow-[0_0_80px_rgba(79,70,229,0.2)]' : 'bg-rose-500 shadow-[0_0_80px_rgba(244,63,94,0.2)]'} rounded-[3rem] flex items-center justify-center text-7xl animate-pulse backdrop-blur-3xl border border-white/10`}>
                 {persona === 'bhai' ? '🛡️' : '💖'}
               </div>
-              <h2 className="mt-12 text-5xl font-black tracking-tighter uppercase italic">
-                {persona === 'bhai' ? 'Bhai' : 'Didi'} <span className="opacity-30">Active</span>
+              <h2 className="mt-10 text-4xl font-black tracking-tighter uppercase italic">
+                {persona === 'bhai' ? 'Bhai' : 'Didi'} <span className="opacity-20">Live</span>
               </h2>
-              <p className="text-white/30 font-bold mt-5 uppercase text-[12px] tracking-[0.5em] px-10 leading-relaxed">
-                Be-khauf ho ke bol. Main pura sun raha hoon.
+              <p className="text-white/30 font-bold mt-4 uppercase text-[10px] tracking-[0.4em] px-10 leading-relaxed">
+                Be-khauf bol, hum sirf tujhe sun rahe hain...
               </p>
             </div>
 
-            {/* --- Dynamic Visualizer --- */}
-            <div className="relative flex items-center justify-center w-full max-w-md h-96">
-              <div className={`absolute w-80 h-80 border-2 ${persona === 'bhai' ? 'border-indigo-500/5' : 'border-rose-500/5'} rounded-full transition-all duration-1000 ${isSpeaking ? 'scale-[1.8] opacity-0' : 'scale-100 opacity-20'}`}></div>
-              
+            <div className="relative flex items-center justify-center w-full max-w-md h-80">
               <div className="z-10 text-center flex flex-col items-center">
                  {isSpeaking ? (
                    <div className="flex flex-col items-center">
-                      <div className="flex gap-2.5 items-end h-24 mb-6">
-                         {[1,2,3,4,5,6,7,8,9,10,11,12].map(i => (
+                      <div className="flex gap-2.5 items-end h-20 mb-6">
+                         {[1,2,3,4,5,6,7,8].map(i => (
                            <div 
                             key={i} 
-                            className={`w-2 rounded-full animate-wave ${persona === 'bhai' ? 'bg-indigo-500' : 'bg-rose-500'} shadow-[0_0_15px_rgba(0,0,0,0.2)]`} 
-                            style={{ 
-                              height: `${30 + Math.random()*70}%`, 
-                              animationDelay: `${i*60}ms`,
-                              animationDuration: `${0.5 + Math.random()}s`
-                            }}
+                            className={`w-2 rounded-full animate-wave ${persona === 'bhai' ? 'bg-indigo-500' : 'bg-rose-500'}`} 
+                            style={{ height: `${30 + Math.random()*70}%`, animationDelay: `${i*60}ms` }}
                            ></div>
                          ))}
                       </div>
-                      <div className={`px-6 py-2 rounded-full border ${persona === 'bhai' ? 'border-indigo-500/30 text-indigo-400' : 'border-rose-500/30 text-rose-400'} font-black uppercase text-[11px] tracking-widest animate-pulse`}>
-                        {persona === 'bhai' ? 'Bhai is speaking' : 'Didi is speaking'}
-                      </div>
+                      <p className={`mt-4 ${persona === 'bhai' ? 'text-indigo-400' : 'text-rose-400'} font-black uppercase text-[10px] tracking-widest animate-pulse`}>Speaking...</p>
                    </div>
                  ) : (
                    <div className="flex flex-col items-center">
-                      <div className="w-6 h-6 bg-green-500 rounded-full animate-ping mb-6 shadow-[0_0_30px_#22c55e]"></div>
-                      <p className="text-green-500 font-black uppercase text-sm tracking-[0.3em]">Listening...</p>
-                      <p className="text-white/10 text-[9px] mt-3 font-black uppercase tracking-[0.2em] bg-white/5 px-4 py-1.5 rounded-full">Barge-in Enabled</p>
+                      <div className="w-5 h-5 bg-green-500 rounded-full animate-ping mb-6 shadow-[0_0_20px_#22c55e]"></div>
+                      <p className="text-green-500 font-black uppercase text-xs tracking-[0.3em]">Listening Active</p>
                    </div>
                  )}
               </div>
             </div>
 
-            {/* --- Controls --- */}
             <div className="absolute bottom-24 flex flex-col items-center">
                 <button 
                   onClick={stopCall}
-                  className="bg-red-500 hover:bg-red-600 text-white w-28 h-28 rounded-full flex items-center justify-center shadow-[0_0_50px_rgba(239,68,68,0.3)] active:scale-90 transition-all group border-8 border-white/5"
+                  className="bg-red-500 hover:bg-red-600 text-white w-24 h-24 rounded-full flex items-center justify-center shadow-[0_0_40px_rgba(239,68,68,0.2)] active:scale-90 transition-all border-4 border-white/5"
                 >
-                  <svg className="w-12 h-12 transform rotate-135 group-hover:scale-110 transition-transform" fill="currentColor" viewBox="0 0 24 24"><path d="M6.62 10.79c1.44 2.82 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z" transform="rotate(135 12 12)"/></svg>
+                  <svg className="w-10 h-10 transform rotate-135" fill="currentColor" viewBox="0 0 24 24"><path d="M6.62 10.79c1.44 2.82 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z" transform="rotate(135 12 12)"/></svg>
                 </button>
-                <p className="mt-8 text-white/20 font-black uppercase tracking-[0.5em] text-[10px]">End Session</p>
+                <p className="mt-6 text-white/20 font-black uppercase tracking-[0.5em] text-[10px]">End</p>
             </div>
           </div>
         )}
@@ -407,28 +408,14 @@ const App: React.FC = () => {
       <style dangerouslySetInnerHTML={{ __html: `
         @keyframes wave {
           0%, 100% { transform: scaleY(0.4); opacity: 0.3; }
-          50% { transform: scaleY(1.3); opacity: 1; filter: brightness(1.2); }
+          50% { transform: scaleY(1.3); opacity: 1; }
         }
         .animate-wave {
           animation: wave 0.8s ease-in-out infinite;
           transform-origin: center;
         }
-        ::-webkit-scrollbar {
-          width: 6px;
-        }
-        ::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        ::-webkit-scrollbar-thumb {
-          background: #e5e7eb;
-          border-radius: 20px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-          background: #d1d5db;
-        }
-        body {
-          -webkit-tap-highlight-color: transparent;
-        }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
       `}} />
     </div>
   );
