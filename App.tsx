@@ -57,7 +57,7 @@ const App: React.FC = () => {
   const [view, setView] = useState<'chat' | 'call'>('chat');
   const [persona, setPersona] = useState<'bhai' | 'didi'>('bhai');
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([]); // Current session only
+  const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [apiKeyMissing, setApiKeyMissing] = useState(false);
@@ -70,28 +70,25 @@ const App: React.FC = () => {
   const chatInstanceRef = useRef<Chat | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Persistence logic
   const getHiddenHistory = useCallback(() => {
-    const saved = localStorage.getItem('bhai_didi_history_v2');
+    const saved = localStorage.getItem('bhai_didi_history_v3');
     return saved ? JSON.parse(saved) : [];
   }, []);
 
   const saveToHistory = useCallback((role: 'user' | 'model', text: string) => {
     const history = getHiddenHistory();
     history.push({ role, parts: [{ text }] });
-    // Keep only last 50 messages to avoid storage issues
-    const trimmed = history.slice(-50);
-    localStorage.setItem('bhai_didi_history_v2', JSON.stringify(trimmed));
+    const trimmed = history.slice(-60);
+    localStorage.setItem('bhai_didi_history_v3', JSON.stringify(trimmed));
   }, [getHiddenHistory]);
 
   useEffect(() => {
     setApiKeyMissing(!process.env.API_KEY);
-    // Welcome message for current session
     setMessages([{ 
       role: 'model', 
       text: persona === 'bhai' 
-        ? "Oye! Tera Bhai yahan hai. Bol kya scene hai? Bindass bol."
-        : "Main hoon na... dil halka kar lo. Didi sab samajh rahi hai."
+        ? "Oye! Tera Bhai yahan hai. Bol kya scene hai? Chill hoke bol."
+        : "Main hoon na... dil halka kar lo. Didi sab samajh rahi hai. Kya hua?"
     }]);
   }, [persona]);
 
@@ -111,14 +108,13 @@ const App: React.FC = () => {
 
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+      const history = getHiddenHistory();
       if (!chatInstanceRef.current) {
-        // Initialize chat with hidden history
-        const history = getHiddenHistory();
         chatInstanceRef.current = ai.chats.create({
           model: 'gemini-3-pro-preview',
-          // @ts-ignore: Standard Gemini SDK allows history in create
-          history: history.slice(0, -1), // Everything except the message we just sent manually
-          config: { systemInstruction: SYSTEM_PROMPT + `\nCurrently: ${persona.toUpperCase()}` }
+          // @ts-ignore
+          history: history.slice(0, -1),
+          config: { systemInstruction: SYSTEM_PROMPT + `\nCurrently: ${persona.toUpperCase()}. Respond fast and emotionally.` }
         });
       }
       const result = await chatInstanceRef.current.sendMessageStream({ message: userMsg });
@@ -139,7 +135,7 @@ const App: React.FC = () => {
       saveToHistory('model', fullResponse);
     } catch (err) {
       console.error(err);
-      setMessages(prev => [...prev, { role: 'model', text: 'Arre internet thoda weak hai shayad... check kar ke phir se bol?' }]);
+      setMessages(prev => [...prev, { role: 'model', text: 'Arre internet me kuch panga hai... check kar ke phir se bol?' }]);
     } finally {
       setIsTyping(false);
     }
@@ -176,7 +172,7 @@ const App: React.FC = () => {
       
       const ai = new GoogleGenAI({ apiKey });
       const history = getHiddenHistory();
-      const historySummary = history.length > 0 ? `\nPreviously discussed: ${JSON.stringify(history.slice(-5))}` : '';
+      const historySummary = history.length > 0 ? `\nMemory of past context: ${JSON.stringify(history.slice(-10))}` : '';
 
       const sessionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-12-2025',
@@ -227,10 +223,7 @@ const App: React.FC = () => {
             }
           },
           onclose: () => stopCall(),
-          onerror: (e) => {
-            console.error("Session Error:", e);
-            stopCall();
-          }
+          onerror: () => stopCall()
         },
         config: {
           responseModalities: [Modality.AUDIO],
@@ -239,88 +232,98 @@ const App: React.FC = () => {
               prebuiltVoiceConfig: { voiceName: persona === 'bhai' ? 'Puck' : 'Kore' } 
             } 
           },
-          systemInstruction: SYSTEM_PROMPT + `\nCurrently: ${persona.toUpperCase()}.${historySummary}\nRespond with high emotional fidelity.`
+          systemInstruction: SYSTEM_PROMPT + `\nCurrently: ${persona.toUpperCase()}.${historySummary}\nReact fast and show extreme emotions like anger, crying, laughter as per user's mood.`
         }
       });
       liveSessionRef.current = await sessionPromise;
     } catch (e) {
-      console.error(e);
       stopCall();
     }
   };
 
   return (
-    <div className="flex flex-col h-screen bg-[#f8fafc] text-slate-800 transition-all duration-500 overflow-hidden relative selection:bg-indigo-100">
+    <div className="flex flex-col h-screen bg-[#f1f5f9] text-slate-800 transition-all duration-500 overflow-hidden relative selection:bg-indigo-100">
       
-      {/* API Key Warning for Deployment */}
       {apiKeyMissing && (
-        <div className="bg-red-500 text-white text-[10px] py-1 text-center font-bold animate-pulse z-50">
-          API_KEY IS MISSING! Deployment Issue detected.
+        <div className="bg-red-600 text-white text-[10px] py-1 text-center font-bold animate-pulse z-50">
+          API_KEY IS MISSING! Check Vercel/Environment Settings.
         </div>
       )}
 
-      {/* --- Glassy Navbar --- */}
-      <nav className="px-6 py-4 bg-white/80 backdrop-blur-3xl border-b border-slate-200/50 flex items-center justify-between shadow-[0_4px_30px_rgba(0,0,0,0.02)] z-20 sticky top-0">
-        <div className="flex items-center gap-3">
-          <div className={`w-12 h-12 flex items-center justify-center rounded-2xl text-white text-2xl shadow-2xl transition-all duration-500 hover:scale-105 active:scale-95 ${persona === 'bhai' ? 'bg-indigo-600 shadow-indigo-100' : 'bg-rose-500 shadow-rose-100'}`}>
+      {/* --- Unified Navbar --- */}
+      <nav className="px-4 py-3 bg-white/90 backdrop-blur-2xl border-b border-slate-200/50 flex items-center justify-between shadow-md z-30 sticky top-0 h-16 sm:h-20">
+        <div className="flex items-center gap-2 sm:gap-4 overflow-hidden">
+          <div className={`flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center rounded-2xl text-white text-xl sm:text-2xl shadow-xl transition-all duration-500 hover:scale-105 active:scale-95 ${persona === 'bhai' ? 'bg-indigo-600' : 'bg-rose-500'}`}>
             {persona === 'bhai' ? '🛡️' : '💖'}
           </div>
-          <div>
-            <h1 className="font-black text-xl tracking-tighter leading-none text-slate-900 uppercase">
+          <div className="hidden sm:block">
+            <h1 className="font-black text-lg tracking-tighter leading-none text-slate-900 uppercase">
               {persona === 'bhai' ? 'Bhai' : 'Didi'} AI
             </h1>
-            <div className="flex items-center gap-1.5 mt-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
-              <p className="text-[9px] text-slate-400 font-black uppercase tracking-[0.2em]">Hidden Memory Active</p>
-            </div>
+            <p className="text-[8px] text-slate-400 font-black uppercase tracking-widest mt-1">Memory Active</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          {view === 'chat' && (
-            <div className="hidden md:flex bg-slate-100/50 p-1 rounded-2xl border border-slate-200/30">
-              <button onClick={() => {setPersona('bhai'); chatInstanceRef.current = null;}} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${persona === 'bhai' ? 'bg-white text-indigo-600 shadow-lg' : 'text-slate-400'}`}>Bhai</button>
-              <button onClick={() => {setPersona('didi'); chatInstanceRef.current = null;}} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${persona === 'didi' ? 'bg-white text-rose-500 shadow-lg' : 'text-slate-400'}`}>Didi</button>
-            </div>
-          )}
-          
+        {/* Persona Toggles - Center/Right Integrated */}
+        <div className="flex-1 flex justify-center px-2">
+           <div className="bg-slate-100/80 p-1 rounded-xl sm:rounded-2xl border border-slate-200/40 flex items-center w-full max-w-[200px] sm:max-w-[240px]">
+              <button 
+                onClick={() => {setPersona('bhai'); chatInstanceRef.current = null;}} 
+                className={`flex-1 py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-[9px] sm:text-[11px] font-black uppercase transition-all duration-500 ${persona === 'bhai' ? 'bg-white text-indigo-600 shadow-lg scale-[1.05]' : 'text-slate-400 hover:text-slate-600'}`}
+              >
+                Bhai
+              </button>
+              <button 
+                onClick={() => {setPersona('didi'); chatInstanceRef.current = null;}} 
+                className={`flex-1 py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-[9px] sm:text-[11px] font-black uppercase transition-all duration-500 ${persona === 'didi' ? 'bg-white text-rose-500 shadow-lg scale-[1.05]' : 'text-slate-400 hover:text-slate-600'}`}
+              >
+                Didi
+              </button>
+           </div>
+        </div>
+
+        <div className="flex items-center">
           {view === 'chat' && (
             <button 
               onClick={startCall}
-              className={`flex items-center gap-2 ${persona === 'bhai' ? 'bg-indigo-600' : 'bg-rose-500'} hover:opacity-90 active:scale-95 transition-all text-white px-6 py-3 rounded-2xl font-black text-xs shadow-xl uppercase`}
+              className={`flex items-center gap-1 sm:gap-2 ${persona === 'bhai' ? 'bg-indigo-600 shadow-indigo-100' : 'bg-rose-500 shadow-rose-100'} hover:opacity-90 active:scale-95 transition-all text-white px-3 sm:px-5 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl font-black text-[10px] sm:text-xs shadow-xl uppercase whitespace-nowrap`}
             >
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6.62 10.79c1.44 2.82 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
+              <svg className="w-3 h-3 sm:w-4 sm:h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6.62 10.79c1.44 2.82 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
               Call
             </button>
           )}
         </div>
       </nav>
 
-      {/* --- Main Chat --- */}
-      <main className="flex-1 relative overflow-hidden flex flex-col">
+      <main className="flex-1 relative overflow-hidden flex flex-col bg-white">
         {view === 'chat' ? (
-          <div className="flex-1 flex flex-col min-h-0 bg-white shadow-inner">
+          <div className="flex-1 flex flex-col min-h-0">
             <div 
               ref={scrollRef}
-              className="flex-1 overflow-y-auto p-5 md:p-10 space-y-8 scroll-smooth"
+              className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 md:space-y-8 scroll-smooth"
             >
               {messages.map((m, i) => (
                 <div 
                   key={i} 
                   className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-5 duration-700`}
                 >
-                  <div className={`max-w-[85%] md:max-w-[70%] rounded-[2.2rem] px-7 py-5 shadow-sm relative group ${
+                  <div className={`max-w-[85%] md:max-w-[70%] rounded-[2rem] px-6 py-4 md:py-5 shadow-sm relative ${
                     m.role === 'user' 
-                      ? `${persona === 'bhai' ? 'bg-indigo-600' : 'bg-rose-500'} text-white rounded-tr-none shadow-xl shadow-slate-200` 
-                      : 'bg-slate-50 text-slate-800 rounded-tl-none border border-slate-100'
+                      ? `${persona === 'bhai' ? 'bg-indigo-600 shadow-indigo-100' : 'bg-rose-500 shadow-rose-100'} text-white rounded-tr-none shadow-xl` 
+                      : 'bg-slate-100/80 text-slate-800 rounded-tl-none border border-slate-200/50'
                   }`}>
-                    <p className="text-[16px] leading-relaxed font-semibold tracking-tight whitespace-pre-wrap">{m.text}</p>
+                    <p className="text-[15px] md:text-[16px] leading-relaxed font-semibold tracking-tight whitespace-pre-wrap">{m.text}</p>
+                    {m.role === 'model' && (
+                      <span className="absolute -top-5 left-1 text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                        {persona === 'bhai' ? 'Bhai' : 'Didi'}
+                      </span>
+                    )}
                   </div>
                 </div>
               ))}
               {isTyping && (
                 <div className="flex justify-start">
-                  <div className="bg-slate-50 p-6 rounded-[2rem] rounded-tl-none border border-slate-100">
+                  <div className="bg-slate-100 p-4 rounded-[1.5rem] rounded-tl-none border border-slate-200/30">
                     <div className="flex gap-2">
                       <div className="w-2 h-2 bg-indigo-300 rounded-full animate-bounce"></div>
                       <div className="w-2 h-2 bg-indigo-300 rounded-full animate-bounce delay-150"></div>
@@ -331,40 +334,40 @@ const App: React.FC = () => {
               )}
             </div>
 
-            <footer className="p-5 bg-white border-t border-slate-100 pb-10">
+            <footer className="p-4 md:p-6 bg-white border-t border-slate-100 pb-8 md:pb-10">
               <form 
                 onSubmit={handleSendMessage}
-                className="max-w-4xl mx-auto relative flex items-center gap-4"
+                className="max-w-4xl mx-auto relative flex items-center gap-3"
               >
                 <input
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
-                  placeholder="Apni baat likh de..."
-                  className="w-full bg-slate-50 border-2 border-transparent focus:border-indigo-100 focus:bg-white rounded-[1.5rem] px-8 py-5 outline-none transition-all text-slate-800 placeholder-slate-400 font-bold shadow-inner"
+                  placeholder={`Apne ${persona === 'bhai' ? 'Bhai' : 'Didi'} se bol de...`}
+                  className="flex-1 bg-slate-50 border-2 border-transparent focus:border-indigo-100 focus:bg-white rounded-2xl px-6 py-4 outline-none transition-all text-slate-800 placeholder-slate-400 font-bold shadow-inner text-base"
                 />
                 <button 
                   type="submit"
                   disabled={!inputText.trim() || isTyping}
-                  className={`${persona === 'bhai' ? 'bg-indigo-600' : 'bg-rose-500'} text-white w-14 h-14 rounded-2xl flex items-center justify-center hover:scale-105 disabled:opacity-20 transition-all active:scale-90 shadow-2xl`}
+                  className={`${persona === 'bhai' ? 'bg-indigo-600' : 'bg-rose-500'} text-white w-12 h-12 md:w-14 md:h-14 rounded-2xl flex items-center justify-center hover:scale-105 disabled:opacity-30 transition-all active:scale-90 shadow-2xl flex-shrink-0`}
                 >
-                  <svg className="w-7 h-7 transform rotate-90" fill="currentColor" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                  <svg className="w-6 h-6 transform rotate-90" fill="currentColor" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
                 </button>
               </form>
             </footer>
           </div>
         ) : (
-          /* --- CALL VIEW (VOICE-FIRST) --- */
-          <div className={`absolute inset-0 ${persona === 'bhai' ? 'bg-[#0a0c14]' : 'bg-[#140a0e]'} flex flex-col items-center justify-center z-50 text-white p-12 animate-in fade-in zoom-in duration-700`}>
+          /* --- CALL VIEW --- */
+          <div className={`absolute inset-0 ${persona === 'bhai' ? 'bg-[#0a0d18]' : 'bg-[#1a0a10]'} flex flex-col items-center justify-center z-50 text-white p-8 animate-in fade-in zoom-in duration-700`}>
             
-            <div className="absolute top-20 flex flex-col items-center text-center max-w-sm">
-              <div className={`w-32 h-32 ${persona === 'bhai' ? 'bg-indigo-600 shadow-[0_0_80px_rgba(79,70,229,0.2)]' : 'bg-rose-500 shadow-[0_0_80px_rgba(244,63,94,0.2)]'} rounded-[3rem] flex items-center justify-center text-7xl animate-pulse backdrop-blur-3xl border border-white/10`}>
+            <div className="absolute top-12 flex flex-col items-center text-center">
+              <div className={`w-28 h-28 sm:w-32 sm:h-32 ${persona === 'bhai' ? 'bg-indigo-600 shadow-[0_0_80px_rgba(79,70,229,0.3)]' : 'bg-rose-500 shadow-[0_0_80px_rgba(244,63,94,0.3)]'} rounded-[3rem] flex items-center justify-center text-6xl animate-pulse backdrop-blur-3xl border border-white/10 shadow-2xl`}>
                 {persona === 'bhai' ? '🛡️' : '💖'}
               </div>
-              <h2 className="mt-10 text-4xl font-black tracking-tighter uppercase italic">
+              <h2 className="mt-8 text-3xl sm:text-4xl font-black tracking-tighter uppercase italic">
                 {persona === 'bhai' ? 'Bhai' : 'Didi'} <span className="opacity-20">Live</span>
               </h2>
-              <p className="text-white/30 font-bold mt-4 uppercase text-[10px] tracking-[0.4em] px-10 leading-relaxed">
-                Be-khauf bol, hum sirf tujhe sun rahe hain...
+              <p className="text-white/30 font-bold mt-3 uppercase text-[9px] tracking-[0.4em] px-10 leading-relaxed max-w-xs">
+                Dil khol ke baat kar, koi judge nahi karega.
               </p>
             </div>
 
@@ -372,12 +375,12 @@ const App: React.FC = () => {
               <div className="z-10 text-center flex flex-col items-center">
                  {isSpeaking ? (
                    <div className="flex flex-col items-center">
-                      <div className="flex gap-2.5 items-end h-20 mb-6">
-                         {[1,2,3,4,5,6,7,8].map(i => (
+                      <div className="flex gap-2 items-end h-20 mb-6">
+                         {[1,2,3,4,5,6,7,8,9,10].map(i => (
                            <div 
                             key={i} 
-                            className={`w-2 rounded-full animate-wave ${persona === 'bhai' ? 'bg-indigo-500' : 'bg-rose-500'}`} 
-                            style={{ height: `${30 + Math.random()*70}%`, animationDelay: `${i*60}ms` }}
+                            className={`w-1.5 sm:w-2 rounded-full animate-wave ${persona === 'bhai' ? 'bg-indigo-400' : 'bg-rose-400'}`} 
+                            style={{ height: `${30 + Math.random()*70}%`, animationDelay: `${i*70}ms` }}
                            ></div>
                          ))}
                       </div>
@@ -385,21 +388,21 @@ const App: React.FC = () => {
                    </div>
                  ) : (
                    <div className="flex flex-col items-center">
-                      <div className="w-5 h-5 bg-green-500 rounded-full animate-ping mb-6 shadow-[0_0_20px_#22c55e]"></div>
-                      <p className="text-green-500 font-black uppercase text-xs tracking-[0.3em]">Listening Active</p>
+                      <div className="w-6 h-6 bg-green-500 rounded-full animate-ping mb-6 shadow-[0_0_25px_#22c55e]"></div>
+                      <p className="text-green-500 font-black uppercase text-xs tracking-[0.3em]">Listening...</p>
                    </div>
                  )}
               </div>
             </div>
 
-            <div className="absolute bottom-24 flex flex-col items-center">
+            <div className="absolute bottom-16 flex flex-col items-center">
                 <button 
                   onClick={stopCall}
-                  className="bg-red-500 hover:bg-red-600 text-white w-24 h-24 rounded-full flex items-center justify-center shadow-[0_0_40px_rgba(239,68,68,0.2)] active:scale-90 transition-all border-4 border-white/5"
+                  className="bg-red-500 hover:bg-red-600 text-white w-20 h-20 sm:w-24 sm:h-24 rounded-full flex items-center justify-center shadow-2xl active:scale-90 transition-all border-4 border-white/5"
                 >
                   <svg className="w-10 h-10 transform rotate-135" fill="currentColor" viewBox="0 0 24 24"><path d="M6.62 10.79c1.44 2.82 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z" transform="rotate(135 12 12)"/></svg>
                 </button>
-                <p className="mt-6 text-white/20 font-black uppercase tracking-[0.5em] text-[10px]">End</p>
+                <p className="mt-6 text-white/20 font-black uppercase tracking-[0.5em] text-[10px]">End Session</p>
             </div>
           </div>
         )}
@@ -415,7 +418,8 @@ const App: React.FC = () => {
           transform-origin: center;
         }
         ::-webkit-scrollbar { width: 4px; }
-        ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        body { background-color: #f1f5f9; }
       `}} />
     </div>
   );
