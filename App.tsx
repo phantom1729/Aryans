@@ -72,7 +72,7 @@ const App: React.FC = () => {
   const chatInstanceRef = useRef<Chat | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const HISTORY_KEY = 'bhai_didi_permanent_v6';
+  const HISTORY_KEY = 'bhai_didi_permanent_v7';
 
   // Persistence Logic
   const getHiddenHistory = useCallback((): HistoryItem[] => {
@@ -92,7 +92,7 @@ const App: React.FC = () => {
   }, [getHiddenHistory]);
 
   const clearHistory = () => {
-    if (window.confirm("Saari purani baatein bhula du?")) {
+    if (window.confirm("Saari purani baatein bhula du? Ekdum fresh start karein?")) {
       localStorage.removeItem(HISTORY_KEY);
       setMessages([{ 
         role: 'model', 
@@ -104,6 +104,7 @@ const App: React.FC = () => {
     }
   };
 
+  // Initialize and load history
   useEffect(() => {
     const savedHistory = getHiddenHistory();
     if (savedHistory.length > 0) {
@@ -122,6 +123,7 @@ const App: React.FC = () => {
     chatInstanceRef.current = null;
   }, [persona, getHiddenHistory]);
 
+  // Auto-scroll on new messages
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -141,13 +143,16 @@ const App: React.FC = () => {
     try {
       const apiKey = process.env.API_KEY || '';
       const ai = new GoogleGenAI({ apiKey });
+      
+      // Always rebuild chat instance if not present or persona changed
       if (!chatInstanceRef.current) {
         const history = getHiddenHistory();
         chatInstanceRef.current = ai.chats.create({
           model: 'gemini-3-pro-preview',
+          // Pass the context of previous chats (except the current message we're about to send)
           history: history.slice(0, -1),
           config: { 
-            systemInstruction: SYSTEM_PROMPT + `\nACTIVE_PERSONA: ${persona.toUpperCase()}. Yaad rakhna user ne pehle kya kaha hai.` 
+            systemInstruction: SYSTEM_PROMPT + `\nACTIVE_PERSONA: ${persona.toUpperCase()}. User ka pura history yaad rakhna aur unse sagi behen/bhai ki tarah baat karna.` 
           }
         });
       }
@@ -170,7 +175,7 @@ const App: React.FC = () => {
       saveToHistory('model', fullResponse);
     } catch (err) {
       console.error(err);
-      setMessages(prev => [...prev, { role: 'model', text: 'Net thoda slow hai, phir se bol?' }]);
+      setMessages(prev => [...prev, { role: 'model', text: 'Server se connect nahi ho paa raha... net check karle?' }]);
     } finally {
       setIsTyping(false);
     }
@@ -197,7 +202,7 @@ const App: React.FC = () => {
   const startCall = async () => {
     const apiKey = process.env.API_KEY;
     if (!apiKey) {
-      alert("API Key missing! Please set it in environment variables.");
+      alert("API Key missing! Env variables check karein.");
       return;
     }
     setView('call');
@@ -210,7 +215,7 @@ const App: React.FC = () => {
       
       const ai = new GoogleGenAI({ apiKey });
       const history = getHiddenHistory();
-      const memoryContext = history.length > 0 ? `\nMEMORY: ${JSON.stringify(history.slice(-20))}` : '';
+      const memoryContext = history.length > 0 ? `\nUSER_PREVIOUS_HISTORY: ${JSON.stringify(history.slice(-30))}` : '';
 
       const sessionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-12-2025',
@@ -261,39 +266,42 @@ const App: React.FC = () => {
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: persona === 'bhai' ? 'Puck' : 'Kore' } } },
-          systemInstruction: SYSTEM_PROMPT + `\nPERSONA: ${persona.toUpperCase()}. ${memoryContext}`
+          systemInstruction: SYSTEM_PROMPT + `\nACTIVE_PERSONA: ${persona.toUpperCase()}. ${memoryContext}\nTalk like a real, caring sibling who remembers their past conversations.`
         }
       });
       liveSessionRef.current = await sessionPromise;
     } catch (e) {
+      console.error(e);
       stopCall();
     }
   };
 
   return (
-    <div className="flex flex-col h-screen w-full bg-[#f8fafc] text-slate-800 transition-all duration-500 overflow-hidden relative font-['Outfit']">
+    <div className="flex flex-col h-screen w-full bg-slate-50 text-slate-800 transition-all duration-500 overflow-hidden relative font-['Outfit']">
       
-      <nav className="h-16 sm:h-20 bg-white/95 backdrop-blur-3xl border-b border-slate-200/50 flex items-center justify-between px-3 sm:px-6 shadow-sm z-30 sticky top-0">
+      {/* --- Unified Responsive Header --- */}
+      <nav className="h-16 sm:h-20 bg-white/95 backdrop-blur-xl border-b border-slate-200/50 flex items-center justify-between px-3 sm:px-6 shadow-sm z-30 sticky top-0">
         <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
-          <div className={`w-9 h-9 sm:w-12 sm:h-12 flex items-center justify-center rounded-2xl text-white text-lg sm:text-2xl shadow-xl ${persona === 'bhai' ? 'bg-indigo-600' : 'bg-rose-500'}`}>
+          <div className={`w-9 h-9 sm:w-12 sm:h-12 flex items-center justify-center rounded-2xl text-white text-lg sm:text-2xl shadow-xl transition-all duration-300 ${persona === 'bhai' ? 'bg-indigo-600' : 'bg-rose-500'}`}>
             {persona === 'bhai' ? '🛡️' : '💖'}
           </div>
           <div className="flex flex-col">
-            <h1 className="font-black text-[10px] sm:text-lg tracking-tighter uppercase leading-none">{persona === 'bhai' ? 'Bhai' : 'Didi'} AI</h1>
-            <p className="text-[6px] sm:text-[9px] text-slate-400 font-bold uppercase tracking-widest">History On</p>
+            <h1 className="font-black text-[10px] sm:text-lg tracking-tighter uppercase leading-none text-slate-900">{persona === 'bhai' ? 'Bhai' : 'Didi'} AI</h1>
+            <p className="text-[6px] sm:text-[9px] text-slate-400 font-bold uppercase tracking-widest">Memory Active</p>
           </div>
         </div>
 
+        {/* --- Mode Selector --- */}
         <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200/30 w-28 sm:w-48 mx-1">
-          <button onClick={() => setPersona('bhai')} className={`flex-1 py-1 sm:py-2 rounded-xl text-[8px] sm:text-[11px] font-black uppercase transition-all ${persona === 'bhai' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>Bhai</button>
-          <button onClick={() => setPersona('didi')} className={`flex-1 py-1 sm:py-2 rounded-xl text-[8px] sm:text-[11px] font-black uppercase transition-all ${persona === 'didi' ? 'bg-white text-rose-500 shadow-sm' : 'text-slate-400'}`}>Didi</button>
+          <button onClick={() => setPersona('bhai')} className={`flex-1 py-1 sm:py-2 rounded-xl text-[8px] sm:text-[11px] font-black uppercase transition-all ${persona === 'bhai' ? 'bg-white text-indigo-600 shadow-sm scale-[1.05]' : 'text-slate-400 hover:text-slate-500'}`}>Bhai</button>
+          <button onClick={() => setPersona('didi')} className={`flex-1 py-1 sm:py-2 rounded-xl text-[8px] sm:text-[11px] font-black uppercase transition-all ${persona === 'didi' ? 'bg-white text-rose-500 shadow-sm scale-[1.05]' : 'text-slate-400 hover:text-slate-500'}`}>Didi</button>
         </div>
 
         <div className="flex items-center gap-1 sm:gap-3">
-          <button onClick={clearHistory} className="p-2 sm:p-3 rounded-xl hover:bg-red-50 text-slate-400 hover:text-red-500 transition-all border border-slate-100 sm:border-slate-200">
+          <button onClick={clearHistory} className="p-2 sm:p-3 rounded-xl hover:bg-red-50 text-slate-400 hover:text-red-500 transition-all border border-slate-100 sm:border-slate-200 group" title="Clear All Memory">
             <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
           </button>
-          <button onClick={startCall} className={`flex items-center gap-1 sm:gap-2 ${persona === 'bhai' ? 'bg-indigo-600' : 'bg-rose-500'} text-white px-3 sm:px-6 py-2 sm:py-3 rounded-xl sm:rounded-2xl font-black text-[10px] sm:text-xs shadow-xl uppercase`}>
+          <button onClick={startCall} className={`flex items-center gap-1 sm:gap-2 ${persona === 'bhai' ? 'bg-indigo-600' : 'bg-rose-500'} text-white px-3 sm:px-6 py-2 sm:py-3 rounded-xl sm:rounded-2xl font-black text-[10px] sm:text-xs shadow-xl uppercase transition-all hover:brightness-110 active:scale-95`}>
             <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6.62 10.79c1.44 2.82 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
             <span className="hidden sm:inline">Call</span>
           </button>
@@ -303,12 +311,21 @@ const App: React.FC = () => {
       <main className="flex-1 relative overflow-hidden flex flex-col bg-white">
         {view === 'chat' ? (
           <div className="flex-1 flex flex-col min-h-0">
-            <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 sm:p-10 space-y-6 md:space-y-10 scroll-smooth bg-slate-50/10">
+            {/* Messages container */}
+            <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 sm:p-10 space-y-6 md:space-y-10 scroll-smooth bg-slate-50/20">
               {messages.map((m, i) => (
-                <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-3`}>
-                  <div className={`max-w-[85%] sm:max-w-[70%] rounded-[1.8rem] sm:rounded-[2.2rem] px-5 py-4 sm:px-8 sm:py-6 relative ${m.role === 'user' ? `${persona === 'bhai' ? 'bg-indigo-600' : 'bg-rose-500'} text-white rounded-tr-none shadow-xl` : 'bg-slate-100 text-slate-800 rounded-tl-none border border-slate-200'}`}>
-                    <p className="text-[15px] sm:text-[17px] leading-relaxed font-semibold">{m.text}</p>
-                    {m.role === 'model' && <span className={`absolute -top-5 left-1 text-[9px] font-black uppercase tracking-[0.2em] ${persona === 'bhai' ? 'text-indigo-400' : 'text-rose-400'}`}>{persona === 'bhai' ? 'Bhai' : 'Didi'}</span>}
+                <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-3 duration-500`}>
+                  <div className={`max-w-[85%] sm:max-w-[70%] rounded-[1.5rem] sm:rounded-[2rem] px-5 py-4 sm:px-8 sm:py-6 relative shadow-sm ${
+                    m.role === 'user' 
+                      ? `${persona === 'bhai' ? 'bg-indigo-600' : 'bg-rose-500'} text-white rounded-tr-none shadow-indigo-100` 
+                      : 'bg-slate-100 text-slate-800 rounded-tl-none border border-slate-200/50'
+                  }`}>
+                    <p className="text-[15px] sm:text-[17px] leading-relaxed font-semibold whitespace-pre-wrap">{m.text}</p>
+                    {m.role === 'model' && (
+                      <span className={`absolute -top-5 left-1 text-[9px] font-black uppercase tracking-[0.2em] ${persona === 'bhai' ? 'text-indigo-400' : 'text-rose-400'}`}>
+                        {persona === 'bhai' ? 'Bhai' : 'Didi'}
+                      </span>
+                    )}
                   </div>
                 </div>
               ))}
@@ -323,21 +340,36 @@ const App: React.FC = () => {
               )}
             </div>
 
-            <footer className="p-4 sm:p-8 bg-white border-t border-slate-100 pb-10 sm:pb-12 shadow-[0_-10px_40px_rgba(0,0,0,0.02)]">
+            {/* Input area */}
+            <footer className="p-4 sm:p-8 bg-white border-t border-slate-100 pb-8 sm:pb-10">
               <form onSubmit={handleSendMessage} className="max-w-4xl mx-auto relative flex items-center gap-3 sm:gap-5">
-                <input value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder={`Apne ${persona === 'bhai' ? 'Bhai' : 'Didi'} se bol...`} className="flex-1 bg-slate-50 border-2 border-transparent focus:border-indigo-100 focus:bg-white rounded-2xl px-6 py-4 sm:py-5 outline-none transition-all text-slate-800 placeholder-slate-400 font-bold text-sm sm:text-lg shadow-inner" />
-                <button type="submit" disabled={!inputText.trim() || isTyping} className={`flex-shrink-0 ${persona === 'bhai' ? 'bg-indigo-600' : 'bg-rose-500'} text-white w-12 h-12 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center hover:scale-105 active:scale-90 shadow-2xl`}><svg className="w-6 h-6 sm:w-8 sm:h-8 transform rotate-90" fill="currentColor" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></button>
+                <input 
+                  value={inputText} 
+                  onChange={(e) => setInputText(e.target.value)} 
+                  placeholder={`Apne ${persona === 'bhai' ? 'Bhai' : 'Didi'} se dil ki baat kar...`} 
+                  className="flex-1 bg-slate-50 border-2 border-transparent focus:border-indigo-100 focus:bg-white rounded-2xl px-6 py-4 sm:py-5 outline-none transition-all text-slate-800 placeholder-slate-400 font-bold text-sm sm:text-lg shadow-inner" 
+                />
+                <button 
+                  type="submit" 
+                  disabled={!inputText.trim() || isTyping} 
+                  className={`flex-shrink-0 ${persona === 'bhai' ? 'bg-indigo-600' : 'bg-rose-500'} text-white w-12 h-12 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center hover:scale-105 active:scale-95 disabled:opacity-20 transition-all shadow-xl`}
+                >
+                  <svg className="w-6 h-6 sm:w-8 sm:h-8 transform rotate-90" fill="currentColor" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                </button>
               </form>
             </footer>
           </div>
         ) : (
-          <div className={`absolute inset-0 ${persona === 'bhai' ? 'bg-[#0b0e1a]' : 'bg-[#1a0b12]'} flex flex-col items-center justify-center z-50 text-white p-8`}>
+          /* --- CALL VIEW --- */
+          <div className={`absolute inset-0 ${persona === 'bhai' ? 'bg-[#0b0e1a]' : 'bg-[#1a0b12]'} flex flex-col items-center justify-center z-50 text-white p-8 animate-in fade-in zoom-in duration-500`}>
             <div className="absolute top-16 flex flex-col items-center text-center w-full px-6">
-              <div className={`w-24 h-24 sm:w-32 sm:h-32 ${persona === 'bhai' ? 'bg-indigo-600 shadow-[0_0_100px_rgba(79,70,229,0.3)]' : 'bg-rose-500 shadow-[0_0_100px_rgba(244,63,94,0.3)]'} rounded-[3rem] flex items-center justify-center text-5xl sm:text-6xl animate-pulse`}>
+              <div className={`w-24 h-24 sm:w-32 sm:h-32 ${persona === 'bhai' ? 'bg-indigo-600 shadow-[0_0_80px_rgba(79,70,229,0.4)]' : 'bg-rose-500 shadow-[0_0_80px_rgba(244,63,94,0.4)]'} rounded-[3rem] flex items-center justify-center text-5xl sm:text-6xl animate-pulse`}>
                 {persona === 'bhai' ? '🛡️' : '💖'}
               </div>
-              <h2 className="mt-8 text-3xl sm:text-4xl font-black uppercase italic">{persona === 'bhai' ? 'Bhai' : 'Didi'} <span className="opacity-20">Live</span></h2>
-              <p className="text-white/30 font-bold mt-4 uppercase text-[9px] sm:text-[10px] tracking-[0.4em]">Dil halka kar le. Koi judge nahi karega.</p>
+              <h2 className="mt-8 text-3xl sm:text-4xl font-black uppercase italic tracking-tight">
+                {persona === 'bhai' ? 'Bhai' : 'Didi'} <span className="opacity-20">Live</span>
+              </h2>
+              <p className="text-white/30 font-bold mt-4 uppercase text-[9px] sm:text-[10px] tracking-[0.4em]">Main sun raha hoon. Bol...</p>
             </div>
 
             <div className="relative flex items-center justify-center w-full h-80">
@@ -349,14 +381,14 @@ const App: React.FC = () => {
                    </div>
                  ) : (
                    <div className="flex flex-col items-center">
-                      <div className="w-6 h-6 bg-green-500 rounded-full animate-ping mb-6"></div>
-                      <p className="text-green-500 font-black uppercase text-xs tracking-[0.3em]">Listening...</p>
+                      <div className={`w-6 h-6 ${persona === 'bhai' ? 'bg-indigo-500' : 'bg-rose-500'} rounded-full animate-ping mb-6`}></div>
+                      <p className="text-white/40 font-black uppercase text-xs tracking-[0.3em]">Listening...</p>
                    </div>
                  )}
             </div>
 
             <div className="absolute bottom-20 flex flex-col items-center">
-                <button onClick={stopCall} className="bg-red-500 text-white w-20 h-20 sm:w-24 sm:h-24 rounded-full flex items-center justify-center shadow-2xl active:scale-90 transition-all border-4 border-white/5">
+                <button onClick={stopCall} className="bg-red-500 text-white w-20 h-20 sm:w-24 sm:h-24 rounded-full flex items-center justify-center shadow-2xl active:scale-90 transition-all border-4 border-white/5 hover:bg-red-600">
                   <svg className="w-10 h-10 transform rotate-135" fill="currentColor" viewBox="0 0 24 24"><path d="M6.62 10.79c1.44 2.82 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z" transform="rotate(135 12 12)"/></svg>
                 </button>
             </div>
@@ -369,6 +401,7 @@ const App: React.FC = () => {
         .animate-wave { animation: wave 0.8s ease-in-out infinite; transform-origin: center; }
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        input::placeholder { font-weight: 500; opacity: 0.6; }
       `}} />
     </div>
   );
