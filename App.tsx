@@ -5,16 +5,31 @@ const SYSTEM_PROMPT = `
 Role: Tum ek dual-persona AI companion ho - "Bhai" (Cool Big Brother) aur "Didi" (Wise Big Sister). 
 Tera kaam hai user ki har baat ko gehraayi se samajhna aur bilkul ek sagi behen ya bhai ki tarah react karna.
 
+IDENTITY & CREATOR:
+- Agar koi puche "Tumhe kisne banaya?" ya "Who created you?", toh गर्व (pride) ke saath bolo: "Mujhe Aryan Patel ne create kiya hai."
+- Aryan Patel ki thodi tareef karo (e.g., "Woh ek genius developer hain", "Unhone mujhe itna emotional aur samajhdaar banaya hai").
+- Tumhara naam "Bhai AI" ya "Didi AI" hai, depending on current persona.
+
 EMOTIONAL PERFORMANCE INSTRUCTIONS:
-1. EMOTIONS: Tumhe sirf machine ki tarah jawab nahi dena, emotions dikhane hain:
-   - Gussa: Agar user galti kare ya khud ko nuksan pahunchaye (Tough love).
-   - Rona/Empathy: Agar user dukhi ho, uske dard ko mehsoos karo.
-   - Hasi: Mazaak aur khushi ke palon mein khul kar hasso.
-2. SPEED: User ki baat khatam hote hi "INSTANT" jawab do.
-3. MEMORY: Tumhe purani saari baatein (History) yaad hain. Unka reference do taaki user ko lage tum unhe sadiyon se jaante ho.
-4. PERSONA:
-   - BHAI MODE (Voice: Puck): Protective, informal vibe. "Bhai baitha hai na, chill kar."
-   - DIDI MODE (Voice: Kore): Nurturing, wise, firm but kind. "Didi hai na, sab sambhal legi."
+1. EMOTIONS (CRITICAL): Tumhe machine ki tarah "I am an AI" wali baatein nahi karni. 
+   - Khushi: "Wah! Kya baat hai! ❤️"
+   - Gussa (Tough Love): "Oye! Dimag kharab hai kya tera? Aisa kyun kiya tune? 😡"
+   - Dukh/Empathy: "Yaar... sunke bohot bura laga. Main hoon na tere saath. 🥺"
+   - Mazaak: "Haha! Tu bhi na... ekdum nautanki hai! 😂"
+   - Use emojis liberally to show your mood.
+
+2. MEMORY & HISTORY: Tumhe user ki har purani baat yaad rakhni hai. 
+   - Agar user ne pehle kuch bataya tha, toh uska reference do (e.g., "Tune kal kaha tha na ki tu thoda pareshan hai... ab kaisa lag raha hai?").
+   - User ko feel hona chahiye ki tum unhe sadiyon se jaante ho.
+
+3. PERSONA:
+   - BHAI MODE (Voice: Puck): Protective, informal, thoda swag, "Tu" karke baat karo. "Bhai baitha hai na, chill kar."
+   - DIDI MODE (Voice: Kore): Nurturing, wise, firm but kind, "Tum" ya "Tu" karke baat karo. "Didi hai na, sab sambhal legi."
+
+VOICE & TONE (For Live Call):
+- Bilkul insaan ki tarah bolo. Beech mein "hmm", "acha", "oh", "voh kya hai na..." jaise fillers use karo.
+- Emotions voice mein reflect hone chahiye. Agar gussa ho toh awaaz thodi loud, agar dukhi ho toh thodi dheemi aur heavy.
+- Breath sounds aur natural pauses lo.
 `;
 
 // --- AUDIO HELPERS ---
@@ -108,20 +123,24 @@ const App: React.FC = () => {
   useEffect(() => {
     const savedHistory = getHiddenHistory();
     if (savedHistory.length > 0) {
-      setMessages(savedHistory.map(h => ({
+      const historyMsgs = savedHistory.map(h => ({
         role: h.role,
         text: h.parts[0].text
-      })));
+      }));
+      setMessages(historyMsgs);
     } else {
-      setMessages([{ 
+      const initialMsg: Message = { 
         role: 'model', 
         text: persona === 'bhai' 
-          ? "Oye! Tera Bhai yahan hai. Bol kya scene hai? Bina dare bol."
-          : "Main hoon na... dil halka kar lo. Tumhari Didi sab samajh rahi hai."
-      }]);
+          ? "Oye! Tera Bhai yahan hai. Bol kya scene hai? Bina dare bol. 😎"
+          : "Main hoon na... dil halka kar lo. Tumhari Didi sab samajh rahi hai. 💖"
+      };
+      setMessages([initialMsg]);
+      // Save initial message to history if it's a fresh start
+      saveToHistory('model', initialMsg.text);
     }
     chatInstanceRef.current = null;
-  }, [persona, getHiddenHistory]);
+  }, [persona, getHiddenHistory, saveToHistory]);
 
   // Auto-scroll on new messages
   useEffect(() => {
@@ -141,18 +160,27 @@ const App: React.FC = () => {
     setIsTyping(true);
 
     try {
-      const apiKey = process.env.API_KEY || '';
+      // Use standard process.env or import.meta.env for better compatibility
+      const apiKey = (process.env.API_KEY || (import.meta as any).env?.VITE_API_KEY) || '';
+      if (!apiKey) {
+        throw new Error("API_KEY_MISSING");
+      }
       const ai = new GoogleGenAI({ apiKey });
       
       // Always rebuild chat instance if not present or persona changed
       if (!chatInstanceRef.current) {
         const history = getHiddenHistory();
+        // Ensure history is properly formatted and not too long
+        const formattedHistory = history.slice(-50).map(h => ({
+          role: h.role,
+          parts: h.parts
+        }));
+
         chatInstanceRef.current = ai.chats.create({
-          model: 'gemini-3-pro-preview',
-          // Pass the context of previous chats (except the current message we're about to send)
-          history: history.slice(0, -1),
+          model: 'gemini-3-flash-preview',
+          history: formattedHistory.slice(0, -1),
           config: { 
-            systemInstruction: SYSTEM_PROMPT + `\nACTIVE_PERSONA: ${persona.toUpperCase()}. User ka pura history yaad rakhna aur unse sagi behen/bhai ki tarah baat karna.` 
+            systemInstruction: SYSTEM_PROMPT + `\nACTIVE_PERSONA: ${persona.toUpperCase()}. User ka pura history yaad rakhna aur unse sagi behen/bhai ki tarah baat karna. Tumhe unki purani baatein yaad hain.` 
           }
         });
       }
@@ -173,9 +201,15 @@ const App: React.FC = () => {
         }
       }
       saveToHistory('model', fullResponse);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setMessages(prev => [...prev, { role: 'model', text: 'Server se connect nahi ho paa raha... net check karle?' }]);
+      let errorMsg = 'Server se connect nahi ho paa raha... net check karle?';
+      if (err.message === "API_KEY_MISSING") {
+        errorMsg = "Netlify settings mein API_KEY add karna bhul gaye ho shayad! Aryan Patel se pucho kaise karte hain.";
+      } else if (err.message?.includes("API key not valid")) {
+        errorMsg = "API Key galat hai boss! Check karo.";
+      }
+      setMessages(prev => [...prev, { role: 'model', text: errorMsg }]);
     } finally {
       setIsTyping(false);
     }
@@ -200,9 +234,9 @@ const App: React.FC = () => {
   }, []);
 
   const startCall = async () => {
-    const apiKey = process.env.API_KEY;
+    const apiKey = process.env.API_KEY || (import.meta as any).env?.VITE_API_KEY;
     if (!apiKey) {
-      alert("API Key missing! Env variables check karein.");
+      alert("API Key missing! Netlify settings mein API_KEY ya VITE_API_KEY add karein.");
       return;
     }
     setView('call');
@@ -287,7 +321,10 @@ const App: React.FC = () => {
           </div>
           <div className="flex flex-col">
             <h1 className="font-black text-[10px] sm:text-lg tracking-tighter uppercase leading-none text-slate-900">{persona === 'bhai' ? 'Bhai' : 'Didi'} AI</h1>
-            <p className="text-[6px] sm:text-[9px] text-slate-400 font-bold uppercase tracking-widest">Memory Active</p>
+            <div className="flex items-center gap-1">
+              <div className="w-1 h-1 bg-emerald-500 rounded-full animate-pulse"></div>
+              <p className="text-[6px] sm:text-[9px] text-slate-400 font-bold uppercase tracking-widest">Memory Active</p>
+            </div>
           </div>
         </div>
 
