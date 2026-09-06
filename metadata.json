@@ -1,0 +1,10 @@
+{
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "name": "Bhai & Didi AI",
+  "description": "High-fidelity dual-persona companion for emotional support and logical guidance.",
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
